@@ -1,5 +1,8 @@
 ﻿# YAML Viewer - TUI YAML File Viewer
 
+<img width="1041" height="1185" alt="image" src="https://github.com/user-attachments/assets/fe4a6a09-5382-4bf7-83f5-a1cb4c61b77a" />
+
+
 ## Overview
 
 **YAML Viewer** is a powerful terminal-based interactive viewer for large YAML files with a tree-like interface. It provides lazy loading, search, filtering capabilities, and protection against various DoS attacks.
