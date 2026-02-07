@@ -1,5 +1,7 @@
 # YAML TUI Viewer
 
+<img width="1041" height="1185" alt="image" src="https://github.com/user-attachments/assets/fe4a6a09-5382-4bf7-83f5-a1cb4c61b77a" />
+
 Консольная **TUI**‑утилита (на базе `curses`) для просмотра **больших YAML файлов** в виде интерактивного дерева.
 Поддерживает **ленивую загрузку**, **поиск**, **фильтрацию**, режим **wrap** и базовые защиты от «тяжёлых» YAML/regex сценариев.
 
