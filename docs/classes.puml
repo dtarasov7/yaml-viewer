@@ -1,0 +1,43 @@
+@startuml
+title YAML TUI Viewer - Key Classes
+
+class YamlNode {
+  +key: str
+  +value: any
+  +children: list<YamlNode>
+  +parent: YamlNode
+  +expanded: bool
+  +is_leaf: bool
+  +toggle()
+  +expand()
+  +collapse()
+  +display_text(width, wrap_mode)
+}
+
+class YamlFile {
+  +filepath: Path
+  +objects: list<any>
+  +load()
+  +iter_objects()
+  +get_object(idx)
+}
+
+class YamlTuiViewer {
+  +yaml_files: list<YamlFile>
+  +root: YamlNode
+  +flat_list: list<(YamlNode, depth, wrapped_lines)>
+  +run()
+  -_draw()
+  -_handle_key(key)
+  -_rebuild_flat_list()
+  -_load_more_objects()
+  -_search_current_field()
+  -_global_search()
+  -_filter_dialog()
+}
+
+YamlTuiViewer --> YamlFile
+YamlTuiViewer --> YamlNode
+YamlNode "1" o-- "*" YamlNode : children
+
+@enduml

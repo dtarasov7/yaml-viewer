@@ -1,0 +1,36 @@
+@startuml
+title Sequence - Startup and Initial Render
+
+actor User
+participant "yaml-viewer.py" as App
+participant YamlTuiViewer as Viewer
+participant YamlFile as File
+participant YamlNode as Node
+
+User -> App : python yaml-viewer.py a.yaml
+App -> File : validate_file_path + load()
+File -> App : objects/documents
+App -> Viewer : init(files)
+Viewer -> Node : build root + initial children
+Viewer -> Viewer : run()
+Viewer -> Viewer : _draw()
+
+@enduml
+
+@startuml
+title Sequence - Global Search (F)
+
+actor User
+participant Viewer
+participant Node
+
+User -> Viewer : press 'F'
+Viewer -> Viewer : open input dialog
+Viewer -> Viewer : safe_regex_compile / safe_regex_search
+loop traverse tree
+  Viewer -> Node : expand() as needed
+  Viewer -> Viewer : collect matches
+end
+Viewer -> Viewer : goto first result + rebuild list
+
+@enduml

@@ -1,0 +1,34 @@
+@startuml
+title YAML TUI Viewer - Components
+
+package "TUI" {
+  [YamlTuiViewer] as Viewer
+}
+
+package "Domain Model" {
+  class YamlNode
+  class YamlFile
+}
+
+package "Parsing" {
+  [split_yaml_documents]
+  [simple_yaml_load]
+}
+
+package "Security" {
+  [validate_file_path]
+  [validate_yaml_object]
+  [safe_regex_compile]
+  [safe_regex_search]
+  [alarm_handler]
+}
+
+Viewer --> YamlFile : loads objects
+Viewer --> YamlNode : renders tree / expands
+YamlFile --> split_yaml_documents
+YamlFile --> simple_yaml_load
+simple_yaml_load --> validate_yaml_object
+safe_regex_search --> safe_regex_compile
+safe_regex_search --> alarm_handler
+
+@enduml

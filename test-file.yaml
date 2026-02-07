@@ -1,0 +1,277 @@
+﻿---
+# Простые скаляры
+simple_string: Hello World
+simple_number: 42
+simple_float: 3.14159
+simple_boolean: true
+null_value: null
+empty_string: ""
+
+---
+# Различные стили строк
+strings:
+  # Одинарные кавычки (literal)
+  single_quoted: 'Single quoted string with ''escaped'' quote'
+  
+  # Двойные кавычки (позволяют экранирование)
+  double_quoted: "Double quoted with \n newline and \t tab"
+  
+  # Без кавычек
+  unquoted: This is unquoted string
+  
+  # Literal block scalar (сохраняет переносы строк)
+  literal_block: |
+    This is a literal block.
+    Line breaks are preserved.
+    Trailing newlines are included.
+    
+  # Folded block scalar (сворачивает в одну строку)
+  folded_block: >
+    This is a folded block.
+    Line breaks become spaces.
+    But empty lines create paragraph breaks.
+
+    Like this one.
+  
+  # Literal block без trailing newline
+  literal_strip: |-
+    No trailing newline here
+    Second line
+  
+  # Folded block с сохранением trailing newlines
+  folded_keep: >+
+    Keeps trailing newlines
+    Second line
+
+
+  # Очень длинная строка
+  long_string: >-
+    Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod 
+    tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim 
+    veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea 
+    commodo consequat. Duis aute irure dolor in reprehenderit in voluptate 
+    velit esse cillum dolore eu fugiat nulla pariatur.
+
+  # Строка со специальными символами
+  special_chars: "Unicode: 你好, Emoji: 🚀, Escaped: \u0048\u0065\u006C\u006C\u006F"
+
+---
+# Списки
+lists:
+  # Обычный список
+  simple_list:
+    - item1
+    - item2
+    - item3
+  
+  # Inline список
+  inline_list: [one, two, three]
+  
+  # Вложенные списки
+  nested_list:
+    - level1_item1
+    - level1_item2:
+        - level2_item1
+        - level2_item2
+    - level1_item3
+  
+  # Смешанные типы в списке
+  mixed_list:
+    - string item
+    - 123
+    - true
+    - null
+    - { key: value }
+    - [nested, list]
+---
+# Словари/объекты
+mappings:
+  # Простой словарь
+  simple_map:
+    key1: value1
+    key2: value2
+  
+  # Inline словарь
+  inline_map: { a: 1, b: 2, c: 3 }
+  
+  # Вложенные словари
+  nested_map:
+    level1:
+      level2:
+        level3:
+          deep_key: deep_value
+  
+  # Ключи со специальными символами
+  "key with spaces": value
+  "key:with:colons": value
+  "123numeric_key": value
+
+# Якоря и алиасы
+anchors_and_aliases:
+  # Определение якоря
+  defaults: &defaults
+    timeout: 30
+    retries: 3
+    log_level: info
+  
+  # Использование алиаса
+  service1:
+    <<: *defaults
+    name: service1
+    port: 8080
+  
+  service2:
+    <<: *defaults
+    name: service2
+    port: 8081
+    timeout: 60  # переопределение
+  
+  # Якорь для списка
+  common_tags: &tags
+    - production
+    - monitored
+  
+  deployment1:
+    name: app1
+    tags: *tags
+  
+  deployment2:
+    name: app2
+    tags: *tags
+
+# Многострочные ключи
+? - complex
+  - key
+  - structure
+: complex value
+
+---
+# Явные типы
+explicit_types:
+  string_type: !!str 123
+  int_type: !!int "456"
+  float_type: !!float "3.14"
+  bool_type: !!bool "yes"
+  null_type: !!null ""
+
+# Специальные значения
+special_values:
+  # Булевы значения (различные варианты)
+  bool_true_variants: [true, True, TRUE, yes, Yes, YES, on, On, ON]
+  bool_false_variants: [false, False, FALSE, no, No, NO, off, Off, OFF]
+  
+  # Null значения
+  null_variants: [null, Null, NULL, ~]
+  
+  # Числа
+  integer: 42
+  octal: 0o52
+  hexadecimal: 0x2A
+  binary: 0b101010
+  exponential: 1.23e+3
+  infinity: .inf
+  not_a_number: .nan
+--
+# Комментарии
+comments_test:
+  key1: value1  # inline comment
+  # Полная строка комментария
+  key2: value2
+  key3: |  # comment after pipe
+    Block content
+    with multiple lines
+---
+# Пустые значения
+empty_values:
+  empty_string: ""
+  empty_list: []
+  empty_map: {}
+  explicit_null: null
+  implicit_null:
+---
+# Сложная вложенная структура
+complex_structure:
+  servers:
+    - name: web-01
+      ip: 192.168.1.10
+      roles:
+        - webserver
+        - load_balancer
+      config: &server_config
+        max_connections: 1000
+        timeout: 30
+    
+    - name: web-02
+      ip: 192.168.1.11
+      roles:
+        - webserver
+      config: *server_config
+  
+  database:
+    primary:
+      host: db-master.example.com
+      port: 5432
+      credentials:
+        username: admin
+        password: "!SecureP@ssw0rd#123"
+    
+    replicas:
+      - { host: db-replica1.example.com, port: 5432 }
+      - { host: db-replica2.example.com, port: 5432 }
+---
+# Unicode и международные символы
+internationalization:
+  russian: "Привет, мир!"
+  chinese: "你好世界"
+  arabic: "مرحبا بالعالم"
+  emoji: "🌍 🚀 ⭐"
+  mixed: "Hello мир 世界 🌏"
+
+# Edge cases
+edge_cases:
+  # Строки, похожие на числа
+  looks_like_number: "123"
+  looks_like_float: "3.14"
+  
+  # Строки, похожие на булевы
+  looks_like_bool: "true"
+  
+  # Специальные символы в строках
+  special_in_string: "key: value, array: [1,2,3]"
+  
+  # Пустые строки разными способами
+  empty1: ""
+  empty2: ''
+  empty3: |
+  
+  # Строка с только пробелами
+  only_spaces: "   "
+  
+  # Многострочный пустой блок
+  multiline_empty: |
+    
+
+    
+
+# Большая вложенность
+deep_nesting:
+  l1:
+    l2:
+      l3:
+        l4:
+          l5:
+            l6:
+              l7:
+                l8:
+                  l9:
+                    l10:
+                      deep_value: "You found me!"
+                      deep_list:
+                        - item: one
+                        - item: two
+
+---
+# Второй YAML документ в том же файле
+second_document:
+  message: "This is a separate YAML document"
+  separated_by: "---"
