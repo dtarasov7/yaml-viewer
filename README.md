@@ -1,121 +1,112 @@
-﻿# YAML Viewer - TUI YAML File Viewer
+# YAML TUI Viewer
+
+Terminal TUI viewer for large YAML files with tree navigation, lazy loading, filtering, search, and value inspection helpers.
+
+[![Python](https://img.shields.io/badge/Python-3.7%2B-blue?logo=python)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Security](https://img.shields.io/badge/Security-Hardened-red)](#security-features)
+[![Version](https://img.shields.io/badge/Version-v1.1.0-brightgreen)](CHANGELOG.md)
 
 <img width="1041" height="1185" alt="image" src="https://github.com/user-attachments/assets/fe4a6a09-5382-4bf7-83f5-a1cb4c61b77a" />
-
 
 ## Overview
 
 **YAML Viewer** is a powerful terminal-based interactive viewer for large YAML files with a tree-like interface. It provides lazy loading, search, filtering capabilities, and protection against various DoS attacks.
 
-![YAML Viewer Demo](https://img.shields.io/badge/version-1.0.0-blue)
-![Python](https://img.shields.io/badge/python-3.6+-green.svg)
-![License](https://img.shields.io/badge/license-MIT-yellow.svg)
-
 ## Features
 
-- 🌳 **Interactive Tree Interface** - Navigate YAML structures with ease
-- ⚡ **Lazy Loading** - Efficient handling of large files (up to 10GB)
-- 🔍 **Search Capabilities** - Both field-specific and global regex search
-- 🎯 **Field Filtering** - Show only fields you're interested in
-- 📜 **Multi-document Support** - Handle YAML files with multiple documents
-- 🛡️ **Security Protection** - Built-in safeguards against DoS attacks:
+- Interactive YAML tree viewer for terminal environments
+- Lazy loading for large files and multi-document YAML
+- Leaf value viewer with scrolling and wrap mode
+- Base64 decode mode for values
+- Pretty-printed JSON when decoded Base64 payload is JSON
+- X.509 certificate inspection via `openssl x509 -noout -text -nameopt utf8`
+- Field search, global search, and field filtering
+- Support for English and Russian keyboard layouts for hotkeys
+- Basic safety limits for large/hostile input:
   - Maximum depth limits
   - String length validation
   - Number digit limits
   - Array/object size constraints
   - Regex timeout protection
-- 📦 **Caching System** - Optimized performance with LRU cache
-- 📏 **Text Wrapping** - Toggle wrap mode for long values
-- 📝 **Error Logging** - Comprehensive error tracking in `yaml-viewer.log`
+- Error logging to `yaml-viewer.log`
 
 ## Requirements
 
-- Python 3.6 or higher
-- `curses` library (built-in on Unix/Linux/macOS, requires `windows-curses` on Windows)
-
-## Installation
-
-### Unix/Linux/macOS
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/yaml-viewer.git
-cd yaml-viewer
-
-# Install dependencies (if any)
-pip install -r requirements.txt
-```
-
-### Windows
-
-```bash
-# Install windows-curses
-pip install windows-curses
-
-# Clone and run
-git clone https://github.com/yourusername/yaml-viewer.git
-cd yaml-viewer
-```
+- Python 3.8+
+- Unix/Linux/macOS terminal with `curses`
+- Windows: `windows-curses` or WSL
+- `openssl` in `PATH` for certificate inspection
 
 ## Usage
 
-### Basic Usage
-
 ```bash
 python yaml-viewer.py file1.yaml
+python yaml-viewer.py file1.yaml file2.yaml
 ```
 
-### Multiple Files
-
-```bash
-python yaml-viewer.py file1.yaml file2.yaml file3.yaml
-```
 
 ### Large Files
 
 The viewer automatically handles large files with lazy loading. Only the first 20 objects are loaded initially, with more loaded as you navigate.
-
-## Key Bindings
+## Main Screen Keys
 
 | Key | Action |
 |-----|--------|
-| `↑` / `k` | Move cursor up |
-| `↓` / `j` | Move cursor down |
-| `←` / `h` | Collapse current node |
-| `→` / `l` | Expand current node |
-| `Enter` | Toggle expand/collapse |
-| `n` | Page down |
-| `p` | Page up |
-| `w` | Toggle text wrapping |
-| `s` | Search in current field |
-| `F` | Global search (regex) |
-| `f` | Field filter dialog |
-| `a` | Expand current object |
-| `z` | Collapse current object |
-| `A` | Expand all loaded objects |
-| `Z` | Collapse all objects |
-| `g` | Go to object by number |
-| `Home` | Go to first object |
-| `End` | Go to last object |
-| `PgDn` | Next object |
-| `PgUp` | Previous object |
 | `q` / `Esc` | Quit |
+| `↑` / `↓` or `j` / `k` | Move cursor |
+| `←` | Collapse current node |
+| `→` or `l` | Expand current node |
+| `Enter` | Open value or toggle node |
+| `n` / `p` | Page down / page up |
+| `Home` / `End` | Go to first / last object |
+| `PgDn` / `PgUp` | Go to next / previous object |
+| `w` | Toggle wrap mode |
+| `a` / `z` | Expand / collapse current object |
+| `x` / `v` | Expand / collapse all loaded objects |
+| `g` | Go to object by number |
+| `s` | Search in current field |
+| `u` | Global search |
+| `f` | Field filter dialog |
 
-## Security Features
+Notes:
+- Letter hotkeys are case-insensitive.
+- Letter hotkeys work in English and Russian keyboard layouts.
 
-The viewer includes multiple layers of security protection:
+## Value Viewer Keys
 
-### Resource Limits
+| Key | Action |
+|-----|--------|
+| `q` / `Esc` | Close viewer |
+| `↑` / `↓` | Vertical scroll |
+| `←` / `→` | Horizontal scroll when wrap is off |
+| `Home` / `End` | Jump to start / end |
+| `PgUp` / `PgDn` | Scroll by page |
+| `w` | Toggle wrap mode |
+| `b` | Decode value as Base64 |
+| `c` | Try to inspect value as X.509 certificate |
+| `r` | Return to raw value |
+
+Notes:
+- If Base64 decoding fails, the error is shown in the header and the raw value remains visible.
+- If certificate parsing fails, the error is shown in the header and the raw value remains visible.
+
+## Security Limits
 
 | Limit | Value |
 |-------|-------|
-| Maximum YAML depth | 100 levels |
+| Maximum YAML depth | 100 |
 | Maximum string length | 10 MB |
-| Maximum number digits | 4,300 |
+| Maximum number digits | 4300 |
 | Maximum array items | 1,000,000 |
 | Maximum object keys | 100,000 |
 | Maximum file size | 10 GB |
 | Regex timeout | 2 seconds |
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).### Additional Protections
+
 
 ### Additional Protections
 
@@ -144,25 +135,6 @@ All errors and warnings are logged to `yaml-viewer.log` in the current directory
 - Error context
 - Exception type and message
 - Full traceback
-
-## Screenshots
-
-*(Add screenshots of the viewer in action here)*
-
-## Examples
-
-### Viewing a Single YAML File
-
-```bash
-python yaml-viewer.py config.yaml
-```
-
-### Comparing Multiple Configuration Files
-
-```bash
-python yaml-viewer.py dev.yaml staging.yaml prod.yaml
-```
-
 ### Searching for Specific Values
 
 1. Navigate to a field
@@ -201,27 +173,12 @@ pip install windows-curses
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
-
+MIT. See [LICENSE](LICENSE).
 ## Author
 
 **Tarasov Dmitry**
 
-- Email: dtarasov7@gmail.com.com
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## Version History
-
-### 1.0.0 (2026)
-
-- Initial release
-- Tree-based navigation
-- Search and filtering
-- Security protections
-- Multi-document support
+- Email: dtarasov7@gmail.com
 
 ## Acknowledgments
 

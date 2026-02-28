@@ -11,10 +11,13 @@ yaml-viewer.py
 """
 
 import curses
+import base64
+import binascii
 import json
 import os
 import re
 import signal
+import subprocess
 import sys
 import traceback
 from collections import OrderedDict
@@ -40,6 +43,13 @@ REGEX_TIMEOUT = 2
 CACHE_SIZE = 200
 PRELOAD_OBJECTS = 20
 LOAD_BATCH_SIZE = 5
+
+EN_TO_RU_HOTKEY = {
+    'q': 'й', 'w': 'ц', 'e': 'у', 'r': 'к', 't': 'е', 'y': 'н', 'u': 'г',
+    'i': 'ш', 'o': 'щ', 'p': 'з', 'a': 'ф', 's': 'ы', 'd': 'в', 'f': 'а',
+    'g': 'п', 'h': 'р', 'j': 'о', 'k': 'л', 'l': 'д', 'z': 'я', 'x': 'ч',
+    'c': 'с', 'v': 'м', 'b': 'и', 'n': 'т', 'm': 'ь'
+}
 
 
 # =============================================================================
@@ -576,6 +586,106 @@ def wrap_text(text: str, width: int, indent: int = 0) -> List[str]:
     return result
 
 
+def _decode_base64_value(text: str) -> Tuple[Optional[str], Optional[str]]:
+    """Try to decode a string as base64 and return a readable representation."""
+    candidate = text.strip()
+    if not candidate:
+        return None, "Empty value"
+
+    cleaned = ''.join(candidate.split())
+    if not cleaned:
+        return None, "Empty value"
+
+    variants = [cleaned]
+    if len(cleaned) % 4 != 0:
+        variants.append(cleaned + ('=' * (4 - len(cleaned) % 4)))
+
+    decoded = None
+    last_error = None
+
+    for variant in variants:
+        try:
+            decoded = base64.b64decode(variant, validate=True)
+            break
+        except (binascii.Error, ValueError) as e:
+            last_error = e
+
+    if decoded is None:
+        return None, f"Failed to decode base64: {last_error}"
+
+    if not decoded:
+        return "", None
+
+    decoded_text = decoded.decode('utf-8', errors='replace')
+    stripped_text = decoded_text.strip()
+    if stripped_text:
+        try:
+            json_obj = json.loads(stripped_text)
+            pretty_json = json.dumps(json_obj, ensure_ascii=False, indent=2)
+            return pretty_json, None
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+
+    return decoded_text, None
+
+
+def _openssl_x509_text(input_data: bytes, der: bool = False) -> Tuple[Optional[str], Optional[str]]:
+    """Return openssl x509 -text output for input bytes."""
+    command = ["openssl", "x509", "-noout", "-text", "-nameopt", "utf8"]
+    if der:
+        command.extend(["-inform", "DER"])
+
+    try:
+        process = subprocess.run(
+            command,
+            input=input_data,
+            capture_output=True,
+            check=False
+        )
+    except FileNotFoundError:
+        return None, "openssl was not found in PATH"
+    except Exception as e:
+        return None, f"Failed to run openssl: {e}"
+
+    if process.returncode == 0:
+        return process.stdout.decode('utf-8', errors='replace').rstrip('\n'), None
+
+    stderr_raw = process.stderr.decode('utf-8', errors='replace')
+    stderr = ' | '.join(part.strip() for part in stderr_raw.splitlines() if part.strip())
+    return None, stderr if stderr else "openssl returned an error"
+
+
+def _render_certificate_view(text: str) -> Tuple[Optional[str], Optional[str]]:
+    """Try to parse value as PEM/DER certificate, including base64 wrapper."""
+    stripped = text.strip()
+    if not stripped:
+        return None, "Empty value"
+
+    attempts: List[Tuple[bytes, bool]] = [(stripped.encode('utf-8'), False)]
+
+    cleaned = ''.join(stripped.split())
+    b64_decoded = None
+    if cleaned:
+        try:
+            b64_decoded = base64.b64decode(cleaned + ('=' * ((4 - len(cleaned) % 4) % 4)))
+        except (binascii.Error, ValueError):
+            b64_decoded = None
+
+    if b64_decoded is not None:
+        attempts.append((b64_decoded, True))
+        attempts.append((b64_decoded, False))
+
+    last_error = "Certificate is not recognized"
+    for payload, is_der in attempts:
+        cert_text, error = _openssl_x509_text(payload, der=is_der)
+        if cert_text is not None:
+            return cert_text, None
+        if error:
+            last_error = error
+
+    return None, f"Certificate parse failed: {last_error}"
+
+
 # =============================================================================
 # Узел YAML дерева
 # =============================================================================
@@ -596,12 +706,16 @@ class YamlNode:
 
     def toggle(self):
         if not self.is_leaf:
-            self.expanded = not self.expanded
             if self.expanded:
+                self.collapse()
+            else:
                 self.expand()
 
     def expand(self):
-        if self.is_leaf or self.expanded:
+        if self.is_leaf:
+            return
+
+        if self.expanded and self.children:
             return
 
         self.expanded = True
@@ -822,6 +936,7 @@ class YamlTuiViewer:
         self.yaml_files = yaml_files
 
         curses.curs_set(0)
+        self.stdscr.keypad(True)
         curses.use_default_colors()
         curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_WHITE)
         curses.init_pair(2, curses.COLOR_YELLOW, -1)
@@ -844,6 +959,68 @@ class YamlTuiViewer:
 
         self._initial_load()
         self._rebuild_flat_list()
+
+    def _read_key(self, win=None) -> int:
+        """Read a key with wide-char support and normalize it to int."""
+        target = win if win is not None else self.stdscr
+        try:
+            key = target.get_wch()
+            if isinstance(key, str):
+                key = ord(key)
+            if key == 27:
+                return self._normalize_escape_key(target)
+            return key
+        except AttributeError:
+            key = target.getch()
+            if key == 27:
+                return self._normalize_escape_key(target)
+            return key
+
+    def _normalize_escape_key(self, win) -> int:
+        """
+        Convert common terminal ESC sequences to curses special keys.
+        Keeps plain Esc as 27.
+        """
+        seq: List[int] = []
+        try:
+            win.nodelay(True)
+            for _ in range(8):
+                ch = win.getch()
+                if ch == -1:
+                    break
+                seq.append(ch)
+        finally:
+            win.nodelay(False)
+
+        if not seq:
+            return 27
+
+        if seq[:2] in ([91, 72], [79, 72]):  # [H / OH
+            return curses.KEY_HOME
+        if seq[:2] in ([91, 70], [79, 70]):  # [F / OF
+            return curses.KEY_END
+        if seq[:3] in ([91, 49, 126], [91, 55, 126]):  # [1~ / [7~
+            return curses.KEY_HOME
+        if seq[:3] in ([91, 52, 126], [91, 56, 126]):  # [4~ / [8~
+            return curses.KEY_END
+        if seq[:3] == [91, 53, 126]:         # [5~
+            return curses.KEY_PPAGE
+        if seq[:3] == [91, 54, 126]:         # [6~
+            return curses.KEY_NPAGE
+        return 27
+
+    def _hotkey(self, key: int, char: str) -> bool:
+        """Match hotkey in English and Russian layouts."""
+        if not isinstance(key, int):
+            return False
+        try:
+            pressed = chr(key)
+        except (TypeError, ValueError, OverflowError):
+            return False
+
+        base = char.lower()
+        ru = EN_TO_RU_HOTKEY.get(base, '')
+        return pressed.lower() == base or (ru and pressed.lower() == ru)
 
     def _initial_load(self):
         global_idx = 0
@@ -957,7 +1134,7 @@ class YamlTuiViewer:
             self._draw()
 
             try:
-                key = self.stdscr.getch()
+                key = self._read_key()
             except KeyboardInterrupt:
                 break
 
@@ -1041,7 +1218,7 @@ class YamlTuiViewer:
             except:
                 pass
 
-        help_text = "q:выход | ↑↓←→/hjkl:навиг | n/p:страница | Enter:откр | w:wrap | s:поиск | f:фильтр | a/z:разв/свер"
+        help_text = "q:выход | ↑↓←→/hjkl:навиг | n/p:страница | Enter:откр | w:wrap | s:поиск | u:глобпоиск | f:фильтр | a/z:объект | x/v:все"
         try:
             self.stdscr.addnstr(height - 1, 0, help_text[:width - 1], width - 1)
         except:
@@ -1050,21 +1227,21 @@ class YamlTuiViewer:
         self.stdscr.refresh()
 
     def _handle_key(self, key: int) -> bool:
-        if key in (ord('q'), ord('Q'), 27):
+        if self._hotkey(key, 'q') or key == 27:
             return False
 
-        elif key in (curses.KEY_UP, ord('k')):
+        elif key == curses.KEY_UP or self._hotkey(key, 'k'):
             self._move_cursor(-1)
-        elif key in (curses.KEY_DOWN, ord('j')):
+        elif key == curses.KEY_DOWN or self._hotkey(key, 'j'):
             self._move_cursor(1)
 
         # Постраничная навигация
-        elif key == ord('n'):  # Page Down
+        elif self._hotkey(key, 'n'):  # Page Down
             self._page_down()
-        elif key == ord('p'):  # Page Up
+        elif self._hotkey(key, 'p'):  # Page Up
             self._page_up()
 
-        elif key in (curses.KEY_RIGHT, ord('l')):
+        elif key == curses.KEY_RIGHT or self._hotkey(key, 'l'):
             self._expand_current()
         elif key == curses.KEY_LEFT:
             self._collapse_current()
@@ -1072,20 +1249,20 @@ class YamlTuiViewer:
         elif key in (curses.KEY_ENTER, 10, 13):
             self._handle_enter()
 
-        elif key in (ord('w'), ord('W')):
+        elif self._hotkey(key, 'w'):
             self._toggle_wrap()
 
-        elif key == ord('a'):
+        elif self._hotkey(key, 'a'):
             self._expand_current_object()
-        elif key == ord('z'):
+        elif self._hotkey(key, 'z'):
             self._collapse_current_object()
 
-        elif key == ord('A'):
+        elif self._hotkey(key, 'x'):
             self._expand_all_loaded()
-        elif key == ord('Z'):
+        elif self._hotkey(key, 'v'):
             self._collapse_all()
 
-        elif key == ord('g'):
+        elif self._hotkey(key, 'g'):
             self._goto_object()
         elif key == curses.KEY_HOME:
             self._goto_first_object()
@@ -1096,12 +1273,11 @@ class YamlTuiViewer:
         elif key == curses.KEY_PPAGE:
             self._prev_object()
 
-        elif key == ord('s'):
+        elif self._hotkey(key, 's'):
             self._search_current_field()
-        elif key == ord('F'):
+        elif self._hotkey(key, 'u'):
             self._global_search()
-
-        elif key == ord('f'):
+        elif self._hotkey(key, 'f'):
             self._filter_dialog()
 
         return True
@@ -1220,25 +1396,60 @@ class YamlTuiViewer:
 
     def _view_value(self, node: YamlNode):
         value_str = str(node.value) if node.value is not None else "null"
-        lines = value_str.split('\n')
+        raw_lines = value_str.split('\n')
+        base64_lines: Optional[List[str]] = None
+        cert_lines: Optional[List[str]] = None
+        base64_error: Optional[str] = None
+        cert_error: Optional[str] = None
 
         height, width = self.stdscr.getmaxyx()
         offset_y = 0
         offset_x = 0
         view_wrap_mode = self.wrap_mode
+        view_mode = "raw"
 
         while True:
             self.stdscr.clear()
 
             key_name = node.key if node.key else "list item"
             wrap_indicator = " [WRAP]" if view_wrap_mode else ""
-            header = f"Просмотр: {key_name}{wrap_indicator} | q/Esc:закрыть | ↑↓←→:прокрутка | w:wrap"
+            mode_label = {"raw": "RAW", "base64": "BASE64", "cert": "CERT"}.get(view_mode, "RAW")
+            mode_message = ""
+
+            view_height = height - 3
+
+            if view_mode == "base64":
+                if base64_lines is None and base64_error is None:
+                    decoded_text, error = _decode_base64_value(value_str)
+                    if decoded_text is not None:
+                        base64_lines = decoded_text.split('\n')
+                    else:
+                        base64_error = error if error else "Failed to decode base64"
+                if base64_lines is not None:
+                    lines = base64_lines
+                else:
+                    lines = raw_lines
+                    mode_message = f" | base64: {base64_error}"
+            elif view_mode == "cert":
+                if cert_lines is None and cert_error is None:
+                    cert_text, error = _render_certificate_view(value_str)
+                    if cert_text is not None:
+                        cert_lines = cert_text.split('\n')
+                    else:
+                        cert_error = error if error else "Certificate parse failed"
+                if cert_lines is not None:
+                    lines = cert_lines
+                else:
+                    lines = raw_lines
+                    mode_message = f" | cert: {cert_error}"
+            else:
+                lines = raw_lines
+
+            header = f"Просмотр: {key_name} [{mode_label}]{wrap_indicator}{mode_message}"
             try:
                 self.stdscr.addnstr(0, 0, header[:width - 1], width - 1, curses.color_pair(2) | curses.A_BOLD)
             except:
                 pass
-
-            view_height = height - 2
 
             if view_wrap_mode:
                 wrapped_lines = []
@@ -1266,14 +1477,32 @@ class YamlTuiViewer:
                 except:
                     pass
 
+            footer = "q/Esc:close | w:wrap | b:base64 | c:cert | r:raw | Home/End/PgUp/PgDn"
+            try:
+                self.stdscr.addnstr(height - 1, 0, footer[:width - 1], width - 1, curses.color_pair(3))
+            except:
+                pass
+
             self.stdscr.refresh()
 
-            key = self.stdscr.getch()
+            key = self._read_key()
 
-            if key in (ord('q'), ord('Q'), 27):
+            if self._hotkey(key, 'q') or key == 27:
                 break
-            elif key in (ord('w'), ord('W')):
+            elif self._hotkey(key, 'w'):
                 view_wrap_mode = not view_wrap_mode
+                offset_y = 0
+                offset_x = 0
+            elif self._hotkey(key, 'b'):
+                view_mode = "raw" if view_mode == "base64" else "base64"
+                offset_y = 0
+                offset_x = 0
+            elif self._hotkey(key, 'c'):
+                view_mode = "raw" if view_mode == "cert" else "cert"
+                offset_y = 0
+                offset_x = 0
+            elif self._hotkey(key, 'r'):
+                view_mode = "raw"
                 offset_y = 0
                 offset_x = 0
             elif key == curses.KEY_UP:
@@ -1281,6 +1510,18 @@ class YamlTuiViewer:
             elif key == curses.KEY_DOWN:
                 max_lines = len(wrapped_lines if view_wrap_mode else lines)
                 offset_y = min(max(0, max_lines - view_height), offset_y + 1)
+            elif key == curses.KEY_HOME:
+                offset_y = 0
+                offset_x = 0
+            elif key == curses.KEY_END:
+                max_lines = len(wrapped_lines if view_wrap_mode else lines)
+                offset_y = max(0, max_lines - view_height)
+                offset_x = 0
+            elif key == curses.KEY_NPAGE:
+                max_lines = len(wrapped_lines if view_wrap_mode else lines)
+                offset_y = min(max(0, max_lines - view_height), offset_y + max(1, view_height - 1))
+            elif key == curses.KEY_PPAGE:
+                offset_y = max(0, offset_y - max(1, view_height - 1))
             elif key == curses.KEY_LEFT and not view_wrap_mode:
                 offset_x = max(0, offset_x - 1)
             elif key == curses.KEY_RIGHT and not view_wrap_mode:
@@ -1660,18 +1901,18 @@ class YamlTuiViewer:
 
             self.stdscr.refresh()
 
-            key = self.stdscr.getch()
+            key = self._read_key()
 
-            if key in (ord('q'), ord('Q'), 27):
+            if self._hotkey(key, 'q') or self._hotkey(key, 'Q') or key == 27:
                 break
             elif key in (curses.KEY_ENTER, 10, 13):
                 self.filter_fields = selected if selected != set(fields_list) else None
                 self._rebuild_flat_list()
                 self.status_message = f"Фильтр: {len(selected)} полей" if selected else "Фильтр снят"
                 break
-            elif key in (curses.KEY_UP, ord('k')):
+            elif key == curses.KEY_UP or self._hotkey(key, 'k'):
                 cursor = max(0, cursor - 1)
-            elif key in (curses.KEY_DOWN, ord('j')):
+            elif key == curses.KEY_DOWN or self._hotkey(key, 'j'):
                 cursor = min(len(fields_list) - 1, cursor + 1)
             elif key == ord(' '):
                 field = fields_list[cursor]
